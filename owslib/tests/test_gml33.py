@@ -32,7 +32,7 @@ class TestGMLReferenceableGridByArray(TestCase):
             </gml:posList>
             <gml:sequenceRule axisOrder="+1 +2">Linear</gml:sequenceRule>
         </gmlrgrid:ReferenceableGridByArray>"""))
-        self.grid = gml.GMLReferenceableGridByArray.from_xml(root[0])
+        self.grid = gml.GMLReferenceableGridByArray.from_xml(root[0], profiles=[gml.gml32.gml32_profile])
 
         root2 = etree.XML(XML_template.format(content="""
           <gml:ReferenceableGridByArray gml:id="6d-SO_t" dimension="3" uomLabels="DMSH DMSH metre" srsDimension="3"
@@ -58,7 +58,7 @@ class TestGMLReferenceableGridByArray(TestCase):
             <gml:sequenceRule axisOrder="+2 +1 +3">Linear</gml:sequenceRule>
           </gml:ReferenceableGridByArray>""".strip()))
 
-        self.grid2 = gml.GMLReferenceableGridByArray.from_xml(root2[0])
+        self.grid2 = gml.GMLReferenceableGridByArray.from_xml(root2[0], profiles=[gml.gml32.gml32_profile])
 
     def test_repr(self):
         self.assertEqual(repr(self.grid), '<GMLReferenceableGridByArray instance>')

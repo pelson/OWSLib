@@ -19,20 +19,6 @@ namespaces = {'gml': 'http://www.opengis.net/gml/3.2',
               'gml32': 'http://www.opengis.net/gml/3.2'}
 
 
-class GeometryTypeTracking(type):
-    """
-    A metaclass to keep track of any abstract geometry subclasses.
-
-    """
-    def __init__(cls, name, bases, dct):
-        # Update the _geometry_types dictionary for any subclass which
-        # is created.
-        for tag in cls.TAGS or []:
-            cls._geometry_types[tag] = cls
-
-        super(GeometryTypeTracking, cls).__init__(name, bases, dct)
-
-
 def apply_namespace(tag, namespaces):
     for key, namespace in namespaces.items():
         tag = tag.replace(key + ':', '{' + namespace + '}')
@@ -55,6 +41,10 @@ def non_instantiable(cls):
 
 SRSInformationGroup_Attrs = ('axisLabels', 'uomLabels')
 SRSReferenceGroup_Attrs = ('srsName', 'srsDimension') + SRSInformationGroup_Attrs
+
+
+class FailedToFindOne(ValueError):
+    """Raised when exactly one element was supposed to be found."""
 
 
 class GMLAbstractObject(object):
@@ -83,39 +73,54 @@ class GMLAbstractGML(GMLAbstractObject):
                 attr = element.get(apply_namespace(attr_name, profile.namespaces))
                 if attr is not None:
                     attrs[attr_name] = attr
+                    # We're done with this attribute. Move on to the next.
                     break
         return kwargs
 
     @classmethod
     def construct_many_from_xml(cls, element, profiles):
-        checked_fqn = []
+        """
+        A generator of instances of classes that implement this GML type.
+
+        """
         for tag in cls.TAGS:
             for profile in profiles:
+                # Expand the tag to a fully qualified one.
                 fqn = profile.expand_ns(tag)
-                if fqn in profile and fqn not in checked_fqn:
-                    checked_fqn.append(fqn)
+                if fqn in profile:
                     found_elements = element.findall(fqn)
-                    if found_elements is not None:
-                        for found_element in found_elements:
-                            yield profile[fqn].from_xml(found_element, profiles)
-                        break
+                    print 'Found {} elements when looking for {}'.format(len(found_elements), fqn)
+                    for found_element in found_elements:
+                        yield profile[fqn].from_xml(found_element, profiles)
+                    # We're done with this tag, so don't check it with other profiles.
+                    break
+                raise ValueError('No profile can handle {}.'.format(tag))
 
     @classmethod
     def construct_one_from_xml(cls, element, profiles):
+        """A single instance of a class which implements this GML type."""
         items = list(cls.construct_many_from_xml(element, profiles))
         if len(items) != 1:
-            raise ValueError('Expected 1 instance of {}, got {}.'.format(cls.__name__, len(items)))
+            raise FailedToFindOne('Expected 1 instance of {}, got {}.'.format(cls.__name__, len(items)))
         return items[0]
 
     @classmethod
     def from_xml(cls, element, profiles):
-        """Create an instance of this class given an XML element and a given GML profile."""
+        """
+        Create an instance of this class given an XML element and a given GML profile.
+
+        Typically profiles are used at the construct_*_from_xml stage, meaning that this classmethod
+        will only use the profiles for passing on to nested construct_*_from_xml calls, rather than
+        iterating over profiles themselves.
+
+        """
+        kwargs = cls.init_kwargs_from_xml(element, profiles)
         try:
-            return cls(**cls.init_kwargs_from_xml(element, profiles))
+            return cls(**kwargs)
         except TypeError:
             print cls
             print cls.init_kwargs_from_xml(element, profiles)
-            print('Failed to construct a {} instance.'.format(cls))
+            print('Failed to construct a {} instance. (kwargs: {!r})'.format(cls, kwargs))
             raise
 
     def __repr__(self):
@@ -173,10 +178,10 @@ class GMLPoint(GMLAbstractGeometry):
     def init_kwargs_from_xml(cls, element, profiles):
         kwargs = super(GMLPoint, cls).init_kwargs_from_xml(element, profiles)
 
-        coords = element.find('gml32:coordinates', namespaces=namespaces).text.split()
-        coords = [float(val) for val in coords]
-        if not coords and element.find('gml32:pos'):
-            raise NotImplementedError('gml32:pos not implemented yet. Very simple!')
+        try:
+            coords = GMLCoordinates.construct_one_from_xml(element, profiles)
+        except FailedToFindOne:
+            raise NotImplementedError('gml32:pos not implemented yet. Should be very simple!')
 
         kwargs.update({'coords': coords})
         return kwargs
@@ -185,9 +190,17 @@ class GMLPoint(GMLAbstractGeometry):
         return 'GMLPoint({!r}, {})'.format(self.attrs, self.coords)
 
 
+class GMLCoordinates(GMLAbstractGML):
+    TAGS = ['gml:coordinates']
+
+    @classmethod
+    def from_xml(cls, element, profiles):
+        return [float(val) for val in element.text.split()]
+
+
 class GMLGrid(GMLAbstractGeometry):
     # See 19.2.2 Grid
-    TAGS = ['gml32:Grid']
+    TAGS = ['gml:Grid']
     def __init__(self, attrs, limits, axes, dims):
         super(GMLGrid, self).__init__(attrs)
         self.limits, self.axes, self.dims = limits, axes, dims
@@ -196,7 +209,8 @@ class GMLGrid(GMLAbstractGeometry):
     def init_kwargs_from_xml(cls, element, profiles):
         kwargs = super(GMLGrid, cls).init_kwargs_from_xml(element, profiles)
 
-        limits = GMLGridEnvelope.from_xml(element.find('gml32:limits', namespaces=namespaces)[0], profiles)
+        # Typically an Envelope.
+        limits = GMLLimits.construct_one_from_xml(element, profiles)
 
         axes = [axis.text for axis in element.findall('gml32:axisName', namespaces=namespaces)]
         labels = element.find('gml32:axisLabels', namespaces=namespaces)
@@ -209,9 +223,17 @@ class GMLGrid(GMLAbstractGeometry):
         return kwargs
 
 
+class GMLLimits(GMLAbstractGML):
+    TAGS = ['gml:limits']
+
+    @classmethod
+    def from_xml(cls, element, profiles):
+        return GMLAbstractGeometry.subclass_from_xml(element[0], profiles)
+
+
 class GMLRectifiedGrid(GMLGrid):
     # See 19.2.3 RectifiedGrid
-    TAGS = ['gml32:RectifiedGrid']
+    TAGS = ['gml:RectifiedGrid']
 
     def __init__(self, attrs, limits, axes, dims, origin, offset_vectors):
         super(GMLRectifiedGrid, self).__init__(attrs, limits, axes, dims)
@@ -237,12 +259,12 @@ class AbstractReferenceableGrid(GMLGrid):
 
 
 class GMLSequenceRule(GMLAbstractGML):
-    TAGS = ['gml32:sequenceRule', 'gmlrgrid:sequenceRule']
+    TAGS = ['gml:sequenceRule', 'gmlrgrid:sequenceRule']
 
 
 class GMLEnvelope(GMLAbstractGML):
     # See 10.1.4.6 EnvelopeType, Envelope
-    TAGS = ['gml32:Envelope']
+    TAGS = ['gml:Envelope']
     ATTRS = GMLAbstractGML.ATTRS + SRSReferenceGroup_Attrs
 
     def __init__(self, attrs, lows, highs):
@@ -267,7 +289,7 @@ class GMLEnvelope(GMLAbstractGML):
 
 class GMLGridEnvelope(GMLAbstractGML):
     # See 10.1.4.6 EnvelopeType, Envelope
-    TAGS = ['gml32:GridEnvelope']
+    TAGS = ['gml:GridEnvelope']
 
     def __init__(self, attrs, lows, highs):
         super(GMLGridEnvelope, self).__init__(attrs)
@@ -428,14 +450,38 @@ class Profile(dict):
         return self.__class__(super(Profile, self).copy(), self.namespaces)
 
     def expand_ns(self, tag):
+        """
+        Convert a tag such as "abc:Testing" to "{abcdefg}Testing" provided a
+        namespace such as "abc": "abcdefg" exists in this profile.
+
+        """
         for key, namespace in self.namespaces.items():
             tag = tag.replace(key + ':', '{' + namespace + '}')
         return tag
 
-gml32_profile = {'gml32:Point': GMLPoint,
-                 'gml32:posList': GMLPosList,
-                 'gml32:RectifiedGrid': GMLRectifiedGrid,
-                 'gml:tupleList': GMLtupleList}
+    def contract_ns(self, tag):
+        """
+        Convert a tag such as "{abcdefg}Testing" to "abc:Testing" provided a
+        namespace such as "abc": "abcdefg" exists in this profile.
+
+        """
+        for key, namespace in self.namespaces.items():
+            tag = tag.replace('{' + namespace + '}', key + ':')
+        return tag
+
+# Maps the tag to the class which implements it.
+gml32_profile = {'gml:Point': GMLPoint,
+                 'gml:posList': GMLPosList,
+                 'gml:RectifiedGrid': GMLRectifiedGrid,
+                 'gml:tupleList': GMLtupleList,
+                 'gml:coordinates': GMLCoordinates,
+                 'gml:grid': GMLGrid,
+                 'gml:RectifiedGrid': GMLRectifiedGrid,
+                 'gml:sequenceRule': GMLSequenceRule,
+                 'gml:Envelope': GMLEnvelope,
+                 'gml:GridEnvelope': GMLGridEnvelope,
+                 'gml:limits': GMLLimits,
+                 }
 gml32_profile = Profile({apply_namespace(tag, namespaces): value for tag, value in gml32_profile.items()},
                         namespaces)
 

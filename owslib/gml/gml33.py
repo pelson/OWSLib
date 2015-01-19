@@ -71,10 +71,10 @@ class GMLReferenceableGridByArray(AbstractReferenceableGrid):
         return axes_arrays
 
     @classmethod
-    def init_kwargs_from_xml(cls, element):
-        kwargs = super(GMLReferenceableGridByArray, cls).init_kwargs_from_xml(element)
+    def init_kwargs_from_xml(cls, element, profiles):
+        kwargs = super(GMLReferenceableGridByArray, cls).init_kwargs_from_xml(element, profiles)
 
-        pos_list = gml32.GMLPosList.from_xml(gml32.GMLPosList.find_one(element))
+        pos_list = gml32.GMLPosList.from_xml(gml32.GMLPosList.find_one(element), profiles)
 
         sequence_rule = gml32.GMLSequenceRule.find_one(element)
         sequence_rule = sequence_rule.get('axisOrder'), sequence_rule.text
