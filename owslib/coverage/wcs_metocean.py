@@ -122,7 +122,7 @@ def _build_GetCoverage_etree(coverage, fields=None, subsets=None,
     if isinstance(coverage, basestring):
         coverage_string = coverage
     else:
-        coverage_string = coverage.name
+        coverage_string = coverage.coverage_id
 
     if fields is None:
         raise ValueError(
@@ -130,7 +130,7 @@ def _build_GetCoverage_etree(coverage, fields=None, subsets=None,
            'Please specify a field or fields.')
     if isinstance(fields, basestring):  #TODO: or Field type
         fields = [fields]
-    field_names = [fld if isinstance(fld, basestring) else fld.name
+    field_names = [fld if isinstance(fld, basestring) else fld.mask_id
                    for fld in fields]
 
     if subsets is not None:

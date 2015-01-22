@@ -21,7 +21,6 @@ class CoverageMetadata(object):
         self.masks = masks
         self._coverage_description = None
 
-
     @property
     def coverage_description(self):
         """

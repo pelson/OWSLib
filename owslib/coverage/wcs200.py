@@ -106,7 +106,7 @@ class CoverageSummary(object):
             else:
                 log.debug('Coverage tag {} not supported.'.format(child.tag))
         return cls(**keywords)
-    
+
     def describe(self):
         """
         Request describeCoverage for this coverage.
@@ -124,32 +124,22 @@ class CoverageSummary(object):
         #encode and request
         data = urlencode(request)
 
-        return openURL(base_url, data, 'Get', service.cookies)
+        xml = openURL(base_url, data, 'Get', service.cookies).read()
+
+        # XXX Handle exception.
+        from wcs_20_describe_coverage import DescribeCoverage
+        root = etree.fromstring(xml)
+        return DescribeCoverage.from_xml(root[0])
 
 
-class WebCoverageService_2_0_0(WCSBase):
-    """Abstraction for OGC Web Coverage Service (WCS), version 2.0.0
-    Implements IWebCoverageService.
-
-    """
+class WebCoverageService_2_0_0(object):
     # Define which concepts will be recognised within the Extension block of a
     # capabilities response.
     # This is a dictionary {<xml-tag>: <object-builder-class>}
     recognised_capability_extensions = {}
 
-    def __getitem__(self, name):
-        ''' check contents dictionary to allow dict like access to service layers'''
-        if name in self.__getattribute__('contents').keys():
-            return self.__getattribute__('contents')[name]
-        else:
-            raise KeyError("No content named %s" % name)
-
-    def __new__(cls, url, xml=None, cookies=None):
-        if cookies is not None:
-            raise ValueError('WCS2 does not support cookies')
-        return WCSBase.__new__(cls, url, xml, None)
-
-    def __init__(self, url, xml=None, _=None):
+    def __init__(self, url, xml=None, cookies=None):
+        self.cookies = cookies
         self.version = VERSION
         self.url = url
 
@@ -229,9 +219,6 @@ class WebCoverageService_2_0_0(WCSBase):
     def _raw_capabilities(self):
         return etree.tostring(self._capabilities, encoding='utf8', method='xml')
 
-    def items(self):
-        return self.contents.items()
-
 #    def describeCoverageCollection(self, collectionid):
 #        if isinstance(collectionid, CoverageSummary):
 #            collectionid = collectionid.collectionid
@@ -242,13 +229,6 @@ class WebCoverageService_2_0_0(WCSBase):
         from owslib.util import http_post
         return http_post(base_url, xml)
 
-    def getOperationByName(self, name):
-        """Return a named operation item."""
-        for item in self.operations:
-            if item.name == name:
-                return item
-        raise KeyError("No operation named %s" % name)
-
     def find_operation(self, name):
         for item in self.operations:
             if item.name == name:
@@ -257,8 +237,8 @@ class WebCoverageService_2_0_0(WCSBase):
 
 
 class Operation(object):
-    """Abstraction for operation metadata    
-    Implements IOperationMetadata.
+    """
+    Abstraction for operation metadata (implements IOperationMetadata interface).
     """
     def __init__(self, elem):
         self.name = elem.get('name')
@@ -371,3 +351,28 @@ class ContactMetadata(object):
             self.email =            elem.find('{http://www.opengis.net/ows}ServiceContact/{http://www.opengis.net/ows}ContactInfo/{http://www.opengis.net/ows}Address/{http://www.opengis.net/ows}ElectronicMailAddress').text
         except AttributeError:
             self.email = None
+
+
+if __name__ == '__main__':
+    import wcs_20_metocean
+    import wcs_metocean
+    import wcs200
+
+    # Register the MetOcean extension.
+    for cls in wcs_metocean._WCS_EXTENSION_SUBTYPES:
+        WebCoverageService_2_0_0.recognised_capability_extensions[cls.TAG] = cls
+
+    wcs = WebCoverageService_2_0_0('http://exxvmviswxaftsing02:8008/GlobalWCSService')
+    print(wcs.contents)
+    coverage = wcs.contents['UKMO_Global_2014-04-27T18.00.00Z_ISBL'].describe()
+    
+    print(coverage.extension.fields.keys())
+
+    print(wcs.contents_extensions[0])
+
+    fields = ['UKMO_Global_Wind']
+    for field in fields:
+        assert field in coverage.extension.fields
+    xml = wcs_metocean.build_GetCoverage_xml(coverage, fields=fields)
+    print(wcs.getCoverage_from_xml(xml))
+#    wcs.

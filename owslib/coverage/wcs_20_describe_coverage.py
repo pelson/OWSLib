@@ -86,7 +86,8 @@ class GMLCOVMetadata(WCSExtension):
 
 
 class DescribeCoverage(object):
-    def __init__(self, domain_set, range_type, extension=None):
+    def __init__(self, coverage_id, domain_set, range_type, extension=None):
+        self.coverage_id = coverage_id
         self.domain_set = domain_set
         self.extension = extension
 
@@ -97,6 +98,8 @@ class DescribeCoverage(object):
 
     @classmethod
     def from_xml(cls, element):
+        coverage_id = element.find('wcs20:CoverageId', namespaces=namespaces).text
+
         domain_set = gml.GMLdomainSet.from_xml(gml.GMLdomainSet.find_one(element))
 
         # Doesn't seem to be documented:
@@ -107,7 +110,7 @@ class DescribeCoverage(object):
         else:
             extension = None
 
-        return cls(domain_set, None, extension=extension)
+        return cls(coverage_id, domain_set, None, extension=extension)
 
     def __repr__(self):
         return '<DescribeCoverage instance>'

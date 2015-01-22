@@ -89,7 +89,7 @@ class GMLAbstractGML(GMLAbstractObject):
             if element is not None:
                 break
         if element is None and not allow_none:
-            raise ValueError('Tags {} not found.'.format(', '.join(cls.TAGS or [])))
+            raise ValueError('Tags {} not found in {}.'.format(', '.join(cls.TAGS or []), lxml.etree.tostring(parent_element)))
         return element
 
     @classmethod

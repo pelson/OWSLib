@@ -21,6 +21,8 @@ class TestGetCoverage(tests.TestCase):
         # Create a service object from the url.
         wcs = wcs200.WebCoverageService_2_0_0(wcs_url)
 
+        wcs.extensions
+
         # Get XML for a coverage request.
         test_xml = wcs_metocean.build_GetCoverage_xml(
             'UKMO_Global_2015-01-15T12.00.00Z_Ground',
